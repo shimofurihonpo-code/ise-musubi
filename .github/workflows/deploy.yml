@@ -14,19 +14,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to Cloudflare Pages
-        run: |
-          npx wrangler pages deploy . --project-name=ise-musubi --branch=main 2>&1 | tee /tmp/deploy_output.txt
+      - name: List Pages projects
+        run: npx wrangler pages project list 2>&1 | tee /tmp/projects.txt
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Post deploy output to GitHub issue
+      - name: Deploy to Cloudflare Pages
+        run: npx wrangler pages deploy . --project-name=ise-musubi --branch=main 2>&1 | tee /tmp/deploy_output.txt
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Post output to GitHub issue
         if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          OUTPUT=$(cat /tmp/deploy_output.txt 2>/dev/null | head -80 || echo "No output file")
-          curl -s -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/issues" \
-            -d "$(jq -n --arg body "Deploy output:\n\`\`\`\n$OUTPUT\n\`\`\`" '{"title":"Deploy output log","body":$body}')"
+          PROJECTS=$(cat /tmp/projects.txt 2>/dev/null || echo "N/A")
+          DEPLOY=$(cat /tmp/deploy_output.txt 2>/dev/null || echo "N/A")
+          python3 -c "
+import json, urllib.request, os
+body = 'Projects:\n\`\`\`\n' + os.environ['PROJECTS'] + '\n\`\`\`\n\nDeploy:\n\`\`\`\n' + os.environ['DEPLOY'] + '\n\`\`\`'
+data = json.dumps({'title': 'Deploy log', 'body': body}).encode()
+req = urllib.request.Request(
+  'https://api.github.com/repos/' + os.environ['REPO'] + '/issues',
+  data=data,
+  headers={'Authorization': 'token ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'}
+)
+urllib.request.urlopen(req)
+print('Issue created')
+" PROJECTS="$PROJECTS" DEPLOY="$DEPLOY"
