@@ -8,7 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       deployments: write
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +20,22 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy . --project-name=ise-musubi --branch=main --commit-dirty=true
+        run: |
+          npx wrangler pages deploy . --project-name=ise-musubi --branch=main --commit-dirty=true 2>&1 | tee /tmp/deploy.txt
+          grep -oE 'https://[^ ]+\.pages\.dev' /tmp/deploy.txt > /tmp/url.txt || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Save status log
+        if: always()
+        run: |
+          STATUS=${{ job.status }}
+          URL=$(cat /tmp/url.txt 2>/dev/null || echo "N/A")
+          echo "{\"status\":\"$STATUS\",\"url\":\"$URL\",\"run\":\"${{ github.run_id }}\",\"sha\":\"${{ github.sha }}\"}" > deploy-status.json
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git pull --rebase origin main
+          git add deploy-status.json
+          git diff --cached --quiet || git commit -m "Deploy status: $STATUS [skip ci]"
+          git push
