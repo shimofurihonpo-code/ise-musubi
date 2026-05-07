@@ -13,20 +13,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: List Pages projects and deploy
+      - name: Create project if not exists
         run: |
-          echo "=== PROJECTS ===" > deploy-log.txt
-          npx wrangler pages project list 2>&1 >> deploy-log.txt || true
-          echo "=== DEPLOY ===" >> deploy-log.txt
-          npx wrangler pages deploy . --project-name=ise-musubi --branch=main 2>&1 >> deploy-log.txt
-          cat deploy-log.txt
+          npx wrangler pages project create ise-musubi --production-branch=main 2>&1 || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Save log to repo
+      - name: Deploy to Cloudflare Pages
+        run: |
+          npx wrangler pages deploy . --project-name=ise-musubi --branch=main 2>&1 | tee /tmp/deploy.txt
+          cat /tmp/deploy.txt
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Save deploy log
         if: always()
         run: |
+          cp /tmp/deploy.txt deploy-log.txt 2>/dev/null || echo "no deploy output" > deploy-log.txt
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
           git add deploy-log.txt
