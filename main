@@ -1,0 +1,3 @@
+#!/bin/sh
+# Cloudflare Pages build placeholder — no build step needed
+exit 0
